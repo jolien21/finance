@@ -47,7 +47,52 @@ def index():
 @login_required
 def buy():
     """Buy shares of stock"""
-    return apology("TODO")
+    if request.method == "POST":
+        #make shure stock's symbol exists or field is not empty
+        symbol = request.form.get("symbol")
+        if not symbol or lookup(symbol) is None:
+            return apology("symbol error", 403)
+        
+        #get shares and check if it positive
+        shares = float(request.form.get("shares"))
+        if not shares or float(shares) < 0:
+            return apology("share error", 403)
+
+        dict_lookup = lookup(symbol)
+        stock_price = dict_lookup["price"]
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        try:
+            if "user_id" in session:
+                user_id = session["user_id"]
+                cursor.execute(
+                    "SELECT cash FROM users WHERE id = ?", (user_id,)
+                )
+                user_balance_row = cursor.fetchone()
+                
+                new_balance = user_balance_row[0]
+                
+                if new_balance < (stock_price * shares):
+                    conn.close()
+                    return apology("not enough money on your account", 403)
+
+                new_balance = new_balance - (stock_price * shares)
+
+                conn.execute("UPDATE users SET cash = ? WHERE id = ?", (new_balance, user_id))
+                conn.commit()
+                conn.close()
+                return redirect("/")
+
+            else:
+                return apology("user_id error", 403)
+        finally:
+            conn.close()
+    else:
+        return render_template("buy.html")
+
+
 
 
 @app.route("/history")
@@ -116,22 +161,6 @@ def login():
         return render_template("login.html")
         #hashed_password = result[0]["hash"]
         
-        # Ensure username exists and password is correct
-    #    if result is None or not check_password_hash(
-     #       result[0]["hash"], request.form.get("password")
-      #  ):
-       #     return apology("invalid username and/or password", 403)
-        
-        # Remember which user has logged in
-       # session["user_id"] = rows[0]["id"]
-
-        # Redirect user to home page
-        #return redirect("/")
-
-    # User reached route via GET (as by clicking a link or via redirect)
-    #else:
-     #   return render_template("login.html")
-
 
 @app.route("/logout")
 def logout():
@@ -148,7 +177,15 @@ def logout():
 @login_required
 def quote():
     """Get stock quote."""
-    return apology("TODO")
+    if request.method == "POST":
+      symbol = request.form.get("quote")
+      if not symbol:
+        return apology("Symbol not found")
+      else:
+        lookup_dict = lookup(symbol)
+        return render_template("quoted.html", data=lookup_dict) 
+    else:
+      return render_template("quote.html")
 
 
 @app.route("/register", methods=["GET", "POST"])
