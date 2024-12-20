@@ -1,8 +1,23 @@
 import requests
+import time, datetime
 
 from flask import redirect, render_template, session
 from functools import wraps
 
+#gemini generated
+def get_current_date():
+  """Gets the current date in a formatted string."""
+  today = datetime.date.today()
+  formatted_date = today.strftime("%Y-%m-%d")
+  return formatted_date
+
+#gemini generated
+def get_current_time():
+  """Gets the current time in seconds since the Epoch."""
+  current_time = time.time()
+  dt_object = datetime.datetime.fromtimestamp(current_time)
+  formatted_time = dt_object.strftime("%I:%M:%S %p")
+  return formatted_time
 
 def apology(message, code=400):
     """Render message as an apology to user."""

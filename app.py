@@ -6,7 +6,7 @@ from flask import Flask, flash, redirect, render_template, request, session
 from flask_session import Session
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from helpers import apology, login_required, lookup, usd
+from helpers import apology, login_required, lookup, usd, get_current_date, get_current_time
 
 # Configure application
 app = Flask(__name__)
@@ -40,7 +40,8 @@ def after_request(response):
 @login_required
 def index():
     """Show portfolio of stocks"""
-    return apology("TODO")
+
+    return render_template("index.html")
 
 
 @app.route("/buy", methods=["GET", "POST"])
@@ -51,44 +52,64 @@ def buy():
         #make shure stock's symbol exists or field is not empty
         symbol = request.form.get("symbol")
         if not symbol or lookup(symbol) is None:
-            return apology("symbol error", 403)
+            return apology("Invalid symbol. Pleas enter a valid stock symbol", 403)
         
         #get shares and check if it positive
         shares = float(request.form.get("shares"))
         if not shares or float(shares) < 0:
-            return apology("share error", 403)
+            return apology("Invalid number of shares. Please enter a positive number", 403)
 
         dict_lookup = lookup(symbol)
         stock_price = dict_lookup["price"]
-        
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        stock_name = dict_lookup["name"]
+        stock_symbol = dict_lookup["symbol"]
         
         try:
-            if "user_id" in session:
-                user_id = session["user_id"]
-                cursor.execute(
-                    "SELECT cash FROM users WHERE id = ?", (user_id,)
-                )
-                user_balance_row = cursor.fetchone()
+          conn = get_db_connection()
+          cursor = conn.cursor()
+
+          if "user_id" in session:
+            user_id = session["user_id"]
+            cursor.execute("SELECT cash FROM users WHERE id = ?", (user_id,))
+            user_balance_row = cursor.fetchone()
                 
-                new_balance = user_balance_row[0]
+            new_balance = user_balance_row[0]
                 
-                if new_balance < (stock_price * shares):
-                    conn.close()
-                    return apology("not enough money on your account", 403)
+            if new_balance < (stock_price * shares):
+              conn.close()
+              return apology("not enough money on your account", 403)
 
-                new_balance = new_balance - (stock_price * shares)
+            new_balance = new_balance - (stock_price * shares)
 
-                conn.execute("UPDATE users SET cash = ? WHERE id = ?", (new_balance, user_id))
-                conn.commit()
-                conn.close()
-                return redirect("/")
+            conn.execute("UPDATE users SET cash = ? WHERE id = ?", (new_balance, user_id))
+                
+            #check for duplicates
+            try:
+              cursor.execute("INSERT INTO stocks (name, symbol) VALUES (?, ?)", (stock_name, stock_symbol))
+              conn.commit()
+            except sqlite3.IntegrityError:
+              print(f"Stock with symbol {stock_symbol} already exists.")
 
-            else:
-                return apology("user_id error", 403)
-        finally:
+            #Retrieve the stock ID
+            cursor.execute("SELECT id FROM stocks WHERE symbol = ?", (stock_symbol,))
+            stock_id_row = cursor.fetchone()
+            stock_id = stock_id_row[0]
+
+            #Log the transaction
+            sort = "buy"
+            current_time = get_current_time()
+            current_date = get_current_date()
+            conn.execute("INSERT INTO transactions (amount, type, buy_price, stock_id, user_id, time, date) VALUES (?, ?, ?, ?, ?, ?, ?)", (shares, sort, stock_price, stock_id, user_id, current_time, current_date))
+               
+            conn.commit()
             conn.close()
+            return redirect("/")
+
+          else:
+            return apology("user_id error", 403)
+        finally:
+          conn.close()
+    
     else:
         return render_template("buy.html")
 
