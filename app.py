@@ -40,8 +40,50 @@ def after_request(response):
 @login_required
 def index():
     """Show portfolio of stocks"""
+    try:
+      conn = get_db_connection()
+      cursor = conn.cursor()
 
-    return render_template("index.html")
+      if "user_id" in session:
+        user_id = session["user_id"]
+        
+        #get symbols
+        cursor.execute("""
+          SELECT symbol, SUM(amount) AS shares FROM stocks
+          JOIN transactions ON stocks.id = transactions.stock_id
+          WHERE transactions.user_id = ?
+          GROUP BY stocks.symbol
+          """, (user_id,))
+        symbols_and_shares = cursor.fetchall()
+
+        #Create dictonary to store symbols, shares and prices
+        symbols = {} 
+        shares = {}
+        prices = {}
+        total_symbols = {}
+
+        for symbol, share_count in symbols_and_shares:
+          symbols[symbol] = symbol
+          shares[symbol] = share_count
+          price = lookup(symbol)
+          prices[symbol] = price["price"]
+          total_symbols[symbol] = round((shares[symbol] * prices[symbol]),2)
+
+        #get cash
+        cursor.execute("SELECT ROUND(cash, 2) FROM users WHERE id = ?", (user_id,))
+        cash = cursor.fetchone()
+        
+        total_cash_ = 0
+        for symbol in total_symbols:
+          total_cash_ += float(total_symbols[symbol])
+        
+        total_cash = round((total_cash_ + cash[0]), 2)
+        
+      else:
+        return apology("user error", 403)
+    finally:
+      conn.close()
+    return render_template("index.html", symbols=symbols, shares=shares, prices=prices, total_symbols=total_symbols, cash=cash, total_cash=total_cash)
 
 
 @app.route("/buy", methods=["GET", "POST"])
